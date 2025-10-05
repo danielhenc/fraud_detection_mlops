@@ -1,5 +1,10 @@
 name: Auto-Retrain Fraud Detection Model
 
+# Permisos necesarios para que GitHub Actions pueda hacer push y crear tags
+permissions:
+  contents: write
+  actions: read
+
 on:
   push:
     paths:
@@ -35,6 +40,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
+        token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 2
     
     - name: Setup Python
@@ -70,6 +76,9 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
     
     - name: Setup Python
       uses: actions/setup-python@v4
