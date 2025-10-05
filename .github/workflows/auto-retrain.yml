@@ -1,6 +1,5 @@
-name: 🤖 Auto-Retrain Fraud Detection Model
+name: Auto-Retrain Fraud Detection Model
 
-# Trigger cuando se hacen cambios a datos de entrenamiento
 on:
   push:
     paths:
@@ -8,7 +7,6 @@ on:
       - 'data/y_train.csv'
       - 'data/fraud_data_processed.csv'
   
-  # También permitir trigger manual
   workflow_dispatch:
     inputs:
       force_retrain:
@@ -18,79 +16,71 @@ on:
       threshold:
         description: 'Minimum new rows needed for retraining'
         required: false
-        default: '100'
+        default: '2'
 
-# Variables de entorno
 env:
   PYTHON_VERSION: '3.10'
-  RETRAIN_THRESHOLD: ${{ github.event.inputs.threshold || '100' }}
+  RETRAIN_THRESHOLD: ${{ github.event.inputs.threshold || '2' }}
   FORCE_RETRAIN: ${{ github.event.inputs.force_retrain || 'false' }}
 
 jobs:
-  # Job 1: Detectar si se necesita reentrenamiento
   data-monitor:
-    name: 📊 Monitor Data Changes
+    name: Monitor Data Changes
     runs-on: ubuntu-latest
     outputs:
       needs_retrain: ${{ steps.check.outputs.needs_retrain }}
       new_rows: ${{ steps.check.outputs.new_rows }}
     
     steps:
-    - name: 🛒 Checkout repository
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 2  # Necesario para comparar cambios
+        fetch-depth: 2
     
-    - name: 🐍 Setup Python
+    - name: Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: ${{ env.PYTHON_VERSION }}
     
-    - name: 📦 Install dependencies
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install pandas numpy scikit-learn
     
-    - name: 🔍 Check for data changes
+    - name: Check for data changes
       id: check
       run: |
         echo "Verificando cambios en datos de entrenamiento..."
         if [ "${{ env.FORCE_RETRAIN }}" = "true" ]; then
-          echo "🚀 FORCE_RETRAIN activado - saltando verificación"
+          echo "FORCE_RETRAIN activado - saltando verificación"
           echo "needs_retrain=true" >> $GITHUB_OUTPUT
           echo "new_rows=999999" >> $GITHUB_OUTPUT
         else
           python src/data_monitor.py --threshold ${{ env.RETRAIN_THRESHOLD }} --action check
         fi
-    
-    - name: 📝 Display monitor results
-      run: |
-        echo "✅ Nuevas filas detectadas: ${{ steps.check.outputs.new_rows }}"
-        echo "🤖 Necesita reentrenamiento: ${{ steps.check.outputs.needs_retrain }}"
 
-  # Job 2: Reentrenamiento del modelo (solo si es necesario)
   retrain-model:
-    name: 🎯 Retrain Model
+    name: Retrain Model
     runs-on: ubuntu-latest
     needs: data-monitor
     if: needs.data-monitor.outputs.needs_retrain == 'true'
     
     steps:
-    - name: 🛒 Checkout repository
+    - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: 🐍 Setup Python
+    - name: Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: ${{ env.PYTHON_VERSION }}
         cache: 'pip'
     
-    - name: 📦 Install dependencies
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: 🔄 Backup current model
+    - name: Backup current model
       run: |
         timestamp=$(date +"%Y%m%d_%H%M%S")
         backup_dir="models/backup_${timestamp}"
@@ -98,7 +88,7 @@ jobs:
         
         if [ -f "models/fraud_model.joblib" ]; then
           cp models/fraud_model.joblib "$backup_dir/"
-          echo "📦 Modelo anterior respaldado en $backup_dir"
+          echo "Modelo anterior respaldado en $backup_dir"
         fi
         
         if [ -f "models/model_metadata.json" ]; then
@@ -107,33 +97,31 @@ jobs:
         
         echo "BACKUP_DIR=$backup_dir" >> $GITHUB_ENV
     
-    - name: 🎯 Train new model
+    - name: Train new model
       id: train
       run: |
-        echo "🚀 Iniciando reentrenamiento del modelo..."
+        echo "Iniciando reentrenamiento del modelo..."
         python src/model.py > train_output.log 2>&1
         
         if [ $? -eq 0 ]; then
-          echo "✅ Modelo entrenado exitosamente"
+          echo "Modelo entrenado exitosamente"
           echo "train_success=true" >> $GITHUB_OUTPUT
           
-          # Extraer métricas del output
-          auc=$(grep "AUC:" train_output.log | tail -1 | grep -oP '\d+\.\d+' || echo "0.0")
+          auc=$(grep "AUC:" train_output.log | tail -1 | grep -oE '[0-9]+\.[0-9]+' || echo "0.0")
           echo "new_auc=$auc" >> $GITHUB_OUTPUT
-          echo "🎯 Nuevo AUC: $auc"
+          echo "Nuevo AUC: $auc"
         else
-          echo "❌ Error en entrenamiento"
+          echo "Error en entrenamiento"
           cat train_output.log
           echo "train_success=false" >> $GITHUB_OUTPUT
         fi
     
-    - name: 📊 Validate new model
+    - name: Validate new model
       id: validate
       if: steps.train.outputs.train_success == 'true'
       run: |
-        echo "🔍 Validando nuevo modelo..."
+        echo "Validando nuevo modelo..."
         
-        # Cargar métricas del modelo anterior si existe
         if [ -f "$BACKUP_DIR/model_metadata.json" ]; then
           old_auc=$(python -c "import json; print(json.load(open('$BACKUP_DIR/model_metadata.json'))['test_auc'])" 2>/dev/null || echo "0.0")
         else
@@ -141,144 +129,74 @@ jobs:
         fi
         
         new_auc="${{ steps.train.outputs.new_auc }}"
-        min_auc=0.85  # AUC mínimo aceptable
+        min_auc=0.85
         
-        echo "📊 AUC anterior: $old_auc"
-        echo "📊 AUC nuevo: $new_auc" 
-        echo "📊 AUC mínimo: $min_auc"
+        echo "AUC anterior: $old_auc"
+        echo "AUC nuevo: $new_auc"
+        echo "AUC mínimo: $min_auc"
         
-        # Validación: nuevo AUC debe ser > mínimo y no degradar más del 5%
-        python << EOF
-import sys
-old_auc = float("$old_auc")
-new_auc = float("$new_auc") 
-min_auc = float("$min_auc")
-
-# Criterios de validación
-passes_minimum = new_auc >= min_auc
-degradation_acceptable = new_auc >= (old_auc * 0.95) if old_auc > 0 else True
-
-print(f"✅ Pasa AUC mínimo ({min_auc}): {passes_minimum}")
-print(f"✅ Degradación aceptable (<5%): {degradation_acceptable}")
-
-if passes_minimum and degradation_acceptable:
-    print("🎉 MODELO VALIDADO - Apto para despliegue")
-    with open("$GITHUB_OUTPUT", "a") as f:
-        f.write("model_valid=true\n")
-    sys.exit(0)
-else:
-    print("❌ MODELO RECHAZADO - No pasa validación")
-    with open("$GITHUB_OUTPUT", "a") as f:
-        f.write("model_valid=false\n")
-    sys.exit(1)
-EOF
+        OLD_AUC=$old_auc NEW_AUC=$new_auc MIN_AUC=$min_auc python src/validate_model.py
     
-    - name: 🚀 Deploy new model or rollback
+    - name: Deploy new model or rollback
       run: |
         if [ "${{ steps.validate.outputs.model_valid }}" = "true" ]; then
-          echo "🚀 Desplegando nuevo modelo..."
-          
-          # Marcar reentrenamiento como completado
+          echo "Desplegando nuevo modelo..."
           python src/data_monitor.py --action mark-completed
           
-          # Crear tag de versión
           timestamp=$(date +"%Y%m%d_%H%M%S")
           model_version="model-v${timestamp}"
-          
-          echo "🏷️  Creando tag: $model_version"
+          echo "Creando tag: $model_version"
           echo "MODEL_VERSION=$model_version" >> $GITHUB_ENV
-          
         else
-          echo "🔄 Restaurando modelo anterior..."
-          
+          echo "Restaurando modelo anterior..."
           if [ -f "$BACKUP_DIR/fraud_model.joblib" ]; then
             cp "$BACKUP_DIR/fraud_model.joblib" models/
             cp "$BACKUP_DIR/model_metadata.json" models/ 2>/dev/null || true
-            echo "✅ Modelo anterior restaurado"
+            echo "Modelo anterior restaurado"
           fi
-          
           exit 1
         fi
     
-    - name: 🧪 Run model tests
+    - name: Run model tests
       if: steps.validate.outputs.model_valid == 'true'
-      run: |
-        echo "🧪 Ejecutando tests del modelo..."
-        
-        # Test básico: cargar modelo y hacer predicción
-        python -c "
-from src.model import FraudDetectionModel
-import pandas as pd
-import numpy as np
-
-# Test de carga
-model = FraudDetectionModel()
-model.load_model()
-print('✅ Modelo carga correctamente')
-
-# Test de predicción
-test_data = pd.DataFrame({
-    'Time': [0.0], 'V1': [-1.359807], 'V2': [-0.072781], 
-    'V4': [2.536347], 'V11': [1.175480], 'Amount': [149.62]
-})
-
-pred = model.predict(test_data)
-prob = model.predict_proba(test_data)
-
-print(f'✅ Predicción: {pred[0]}, Probabilidad: {prob[0]:.4f}')
-print('🎉 Todos los tests pasaron')
-"
+      run: python src/test_model.py
     
-    - name: 💾 Commit new model
+    - name: Commit new model
       if: steps.validate.outputs.model_valid == 'true'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         
-        git add models/fraud_model.joblib
-        git add models/model_metadata.json
-        git add data_state.json
+        git add models/fraud_model.joblib models/model_metadata.json data_state.json
         
-        commit_msg="🤖 Auto-retrain model $MODEL_VERSION
-        
-        - New rows processed: ${{ needs.data-monitor.outputs.new_rows }}
-        - New AUC: ${{ steps.train.outputs.new_auc }}
-        - Backup: $BACKUP_DIR
-        "
+        commit_msg="Auto-retrain model $MODEL_VERSION - New rows: ${{ needs.data-monitor.outputs.new_rows }} - AUC: ${{ steps.train.outputs.new_auc }}"
         
         git commit -m "$commit_msg" || echo "No changes to commit"
         git tag -a "$MODEL_VERSION" -m "Automated model retrain"
-        
-        # Push changes
         git push origin HEAD
         git push origin --tags
-        
-        echo "✅ Nuevo modelo committeado y tagged como $MODEL_VERSION"
+        echo "Nuevo modelo committeado y tagged como $MODEL_VERSION"
 
-  # Job 3: Notificación de resultados
   notify-results:
-    name: 📣 Notify Results
+    name: Notify Results
     runs-on: ubuntu-latest
     needs: [data-monitor, retrain-model]
-    if: always()  # Siempre ejecutar para notificar resultados
+    if: always()
     
     steps:
-    - name: 📊 Display workflow results
+    - name: Display workflow results
       run: |
-        echo "## 🤖 Reentrenamiento Automático - Resultados" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Reentrenamiento Automático - Resultados" >> $GITHUB_STEP_SUMMARY
         echo "| Métrica | Valor |" >> $GITHUB_STEP_SUMMARY
         echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| **Nuevas filas detectadas** | ${{ needs.data-monitor.outputs.new_rows || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Necesitaba reentrenamiento** | ${{ needs.data-monitor.outputs.needs_retrain || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Estado del reentrenamiento** | ${{ needs.retrain-model.result || 'Saltado' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Timestamp** | $(date) |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Nuevas filas | ${{ needs.data-monitor.outputs.new_rows || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Necesita reentrenamiento | ${{ needs.data-monitor.outputs.needs_retrain || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Estado | ${{ needs.retrain-model.result || 'Saltado' }} |" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ needs.retrain-model.result }}" = "success" ]; then
-          echo "✅ **Reentrenamiento completado exitosamente**" >> $GITHUB_STEP_SUMMARY
+          echo "Reentrenamiento completado exitosamente" >> $GITHUB_STEP_SUMMARY
         elif [ "${{ needs.data-monitor.outputs.needs_retrain }}" = "false" ]; then
-          echo "⏳ **No se necesitaba reentrenamiento**" >> $GITHUB_STEP_SUMMARY
+          echo "No se necesitaba reentrenamiento" >> $GITHUB_STEP_SUMMARY
         else
-          echo "❌ **Reentrenamiento falló**" >> $GITHUB_STEP_SUMMARY
+          echo "Reentrenamiento falló" >> $GITHUB_STEP_SUMMARY
         fi
