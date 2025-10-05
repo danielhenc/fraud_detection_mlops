@@ -9,6 +9,7 @@ import os
 from datetime import datetime
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
 from sklearn.model_selection import cross_val_score
@@ -23,6 +24,7 @@ class FraudDetectionModel:
     def create_pipeline(self):
         """Crea el pipeline de preprocessing + modelo."""
         self.pipeline = Pipeline([
+            ('imputer', SimpleImputer(strategy='median')),  # Limpiar NaNs
             ('scaler', StandardScaler()),
             ('classifier', RandomForestClassifier(
                 n_estimators=100,
