@@ -51,6 +51,8 @@ jobs:
       id: check
       run: |
         echo "Verificando cambios en datos de entrenamiento..."
+        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+        
         if [ "${{ env.FORCE_RETRAIN }}" = "true" ]; then
           echo "FORCE_RETRAIN activado - saltando verificación"
           echo "needs_retrain=true" >> $GITHUB_OUTPUT
@@ -101,9 +103,21 @@ jobs:
       id: train
       run: |
         echo "Iniciando reentrenamiento del modelo..."
-        python src/model.py > train_output.log 2>&1
+        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         
-        if [ $? -eq 0 ]; then
+        echo "PYTHONPATH: $PYTHONPATH"
+        echo "Verificando archivos de datos..."
+        ls -la data/
+        
+        python src/model.py > train_output.log 2>&1
+        exit_code=$?
+        
+        echo "Exit code: $exit_code"
+        echo "=== LOG OUTPUT ==="
+        cat train_output.log
+        echo "=================="
+        
+        if [ $exit_code -eq 0 ]; then
           echo "Modelo entrenado exitosamente"
           echo "train_success=true" >> $GITHUB_OUTPUT
           
@@ -112,8 +126,8 @@ jobs:
           echo "Nuevo AUC: $auc"
         else
           echo "Error en entrenamiento"
-          cat train_output.log
           echo "train_success=false" >> $GITHUB_OUTPUT
+          exit 1
         fi
     
     - name: Validate new model
@@ -142,6 +156,7 @@ jobs:
       run: |
         if [ "${{ steps.validate.outputs.model_valid }}" = "true" ]; then
           echo "Desplegando nuevo modelo..."
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
           python src/data_monitor.py --action mark-completed
           
           timestamp=$(date +"%Y%m%d_%H%M%S")
