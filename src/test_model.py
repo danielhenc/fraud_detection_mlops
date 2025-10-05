@@ -1,4 +1,8 @@
-from src.model import FraudDetectionModel
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from model import FraudDetectionModel
 import pandas as pd
 import numpy as np
 

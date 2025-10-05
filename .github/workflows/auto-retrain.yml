@@ -135,6 +135,7 @@ jobs:
         echo "AUC nuevo: $new_auc"
         echo "AUC mínimo: $min_auc"
         
+        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
         OLD_AUC=$old_auc NEW_AUC=$new_auc MIN_AUC=$min_auc python src/validate_model.py
     
     - name: Deploy new model or rollback
@@ -159,7 +160,9 @@ jobs:
     
     - name: Run model tests
       if: steps.validate.outputs.model_valid == 'true'
-      run: python src/test_model.py
+      run: |
+        export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+        python src/test_model.py
     
     - name: Commit new model
       if: steps.validate.outputs.model_valid == 'true'

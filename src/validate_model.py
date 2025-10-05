@@ -1,6 +1,9 @@
 import sys
 import os
 
+# Agregar directorio actual al path para imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 old_auc = float(os.environ.get('OLD_AUC', '0.0'))
 new_auc = float(os.environ.get('NEW_AUC', '0.0'))
 min_auc = float(os.environ.get('MIN_AUC', '0.85'))
