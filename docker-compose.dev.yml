@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  # Solo la API para desarrollo rápido
+  fraud-api-dev:
+    build: 
+      context: .
+      target: production
+    ports:
+      - "8000:8000"
+    volumes:
+      # Montar código fuente para desarrollo
+      - ./src:/app/src
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - ENV=development
+      - LOG_LEVEL=DEBUG
+    command: ["python", "src/api.py"]
+    networks:
+      - dev-network
+
+networks:
+  dev-network:
+    driver: bridge

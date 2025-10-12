@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # API principal de detección de fraude
+  fraud-api:
+    build: 
+      context: .
+      target: production
+    ports:
+      - "8000:8000"
+    volumes:
+      # Montar modelos para actualizaciones en tiempo real
+      - ./models:/app/models:ro
+      - ./logs:/app/logs
+    environment:
+      - ENV=production
+      - LOG_LEVEL=INFO
+      - MODEL_PATH=/app/models/fraud_model.joblib
+    networks:
+      - mlops-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Servicio para entrenamiento por demanda
+  model-trainer:
+    build:
+      context: .
+      target: production
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    environment:
+      - ENV=production
+      - PYTHONPATH=/app
+    command: ["python", "src/model.py"]
+    networks:
+      - mlops-network
+    profiles:
+      - training
+
+networks:
+  mlops-network:
+    driver: bridge

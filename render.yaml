@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: fraud-detection-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    numInstances: 1
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: PYTHONUNBUFFERED
+        value: 1
+      - key: LOG_LEVEL
+        value: INFO
+      - key: ENV
+        value: production
+      - key: ENABLE_MODEL_WATCHER
+        value: "false"  # Desactivar en producción para mejor performance
+      - key: MODEL_PATH
+        value: models/fraud_model.joblib
+      - key: METADATA_PATH
+        value: models/model_metadata.json
+    buildCommand: ""
+    startCommand: ""
+    autoDeploy: true
+    preDeployCommand: ""
+    disk:
+      name: fraud-detection-disk
+      mountPath: /app/logs
+      sizeGB: 1

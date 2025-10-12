@@ -10,35 +10,103 @@ import os
 from datetime import datetime
 from typing import List, Dict, Any
 import logging
+import logging.config
+import threading
+import time
+import json
 
 from model import FraudDetectionModel
+from config import config
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
+# Configurar logging usando la configuración centralizada
+logging.config.dictConfig(config.log_config)
 logger = logging.getLogger(__name__)
 
 # Crear app FastAPI
 app = FastAPI(
-    title="Fraud Detection API",
-    description="API para detección de fraude en transacciones bancarias",
-    version="1.0.0"
+    title=config.API_TITLE,
+    description=config.API_DESCRIPTION,
+    version=config.API_VERSION
 )
 
-# Cargar modelo al iniciar la aplicación
+# Variables globales para el modelo y control de recarga
 model = None
+model_lock = threading.Lock()
+model_last_modified = None
+model_watcher_running = False
+
+def load_model():
+    """Función para cargar/recargar el modelo de forma thread-safe."""
+    global model, model_last_modified
+    
+    with model_lock:
+        try:
+            new_model = FraudDetectionModel()
+            new_model.load_model()
+            
+            # Actualizar modelo y timestamp
+            model = new_model
+            model_path = "models/fraud_model.joblib"
+            if os.path.exists(model_path):
+                model_last_modified = os.path.getmtime(model_path)
+            
+            logger.info(f"Modelo cargado/recargado exitosamente. Versión: {model.model_metadata.get('version', 'unknown')}")
+            return True
+        except Exception as e:
+            logger.error(f"Error cargando modelo: {e}")
+            return False
+
+def model_file_watcher():
+    """Watcher para detectar cambios en el archivo del modelo."""
+    global model_watcher_running, model_last_modified
+    
+    model_path = config.MODEL_PATH
+    metadata_path = config.METADATA_PATH
+    
+    while model_watcher_running:
+        try:
+            # Verificar si alguno de los archivos del modelo cambió
+            current_model_time = os.path.getmtime(model_path) if os.path.exists(model_path) else None
+            current_metadata_time = os.path.getmtime(metadata_path) if os.path.exists(metadata_path) else None
+            
+            # Si el archivo del modelo cambió
+            if current_model_time and (model_last_modified is None or current_model_time > model_last_modified):
+                logger.info("Detectado cambio en el archivo del modelo. Recargando...")
+                if load_model():
+                    logger.info("Modelo recargado automáticamente")
+                else:
+                    logger.error("Falló la recarga automática del modelo")
+            
+            time.sleep(config.WATCHER_INTERVAL)  # Verificar según configuración
+            
+        except Exception as e:
+            logger.error(f"Error en model watcher: {e}")
+            time.sleep(60)  # Esperar más si hay error
 
 @app.on_event("startup")
 async def startup_event():
-    """Cargar modelo al iniciar la API."""
-    global model
-    try:
-        model = FraudDetectionModel()
-        model.load_model()
-        logger.info("Modelo cargado exitosamente")
-    except Exception as e:
-        logger.error(f"Error cargando modelo: {e}")
-        # En producción, podrías querer fallar aquí
-        model = None
+    """Cargar modelo e iniciar watcher al iniciar la API."""
+    global model_watcher_running
+    
+    # Cargar modelo inicial
+    if not load_model():
+        logger.warning("No se pudo cargar el modelo inicial")
+    
+    # Iniciar watcher en background solo si está habilitado
+    if config.ENABLE_MODEL_WATCHER:
+        model_watcher_running = True
+        watcher_thread = threading.Thread(target=model_file_watcher, daemon=True)
+        watcher_thread.start()
+        logger.info("Model file watcher iniciado")
+    else:
+        logger.info("Model file watcher deshabilitado por configuración")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Detener watcher al cerrar la API."""
+    global model_watcher_running
+    model_watcher_running = False
+    logger.info("API shutting down...")
 
 # Modelos Pydantic para requests/responses
 class TransactionRequest(BaseModel):
@@ -90,15 +158,37 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check detallado."""
+    """Health check detallado.""" 
     model_status = "loaded" if model is not None else "not_loaded"
+    model_path = "models/fraud_model.joblib"
     
     return {
         "status": "healthy",
         "model_status": model_status,
         "model_metadata": model.model_metadata if model else {},
+        "model_last_modified": datetime.fromtimestamp(model_last_modified).isoformat() if model_last_modified else None,
+        "model_file_exists": os.path.exists(model_path),
+        "watcher_running": model_watcher_running,
         "timestamp": datetime.now().isoformat()
     }
+
+@app.post("/reload-model")
+async def reload_model():
+    """Endpoint para recargar manualmente el modelo."""
+    logger.info("Recarga manual del modelo solicitada")
+    
+    if load_model():
+        return {
+            "status": "success",
+            "message": "Modelo recargado exitosamente",
+            "model_metadata": model.model_metadata if model else {},
+            "timestamp": datetime.now().isoformat()
+        }
+    else:
+        raise HTTPException(
+            status_code=500, 
+            detail="Error recargando el modelo. Ver logs para más detalles."
+        )
 
 @app.post("/predict", response_model=TransactionResponse)
 async def predict_fraud(transaction: TransactionRequest):
@@ -210,4 +300,14 @@ async def model_info():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    logger.info(f"Iniciando API en {config.API_HOST}:{config.API_PORT}")
+    logger.info(f"Entorno: {config.ENV}")
+    logger.info(f"Model watcher: {'habilitado' if config.ENABLE_MODEL_WATCHER else 'deshabilitado'}")
+    
+    uvicorn.run(
+        app, 
+        host=config.API_HOST, 
+        port=config.API_PORT,
+        log_level=config.LOG_LEVEL.lower(),
+        access_log=not config.is_production()  # Desactivar access logs en producción
+    )

@@ -210,10 +210,79 @@ jobs:
         git push origin --tags
         echo "Nuevo modelo committeado y tagged como $MODEL_VERSION"
 
+  build-docker-image:
+    name: Build Updated Docker Image
+    runs-on: ubuntu-latest
+    needs: retrain-model
+    if: needs.retrain-model.result == 'success'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+    
+    - name: Get model version
+      run: |
+        # Recuperar la versión del modelo del commit más reciente
+        MODEL_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "latest")
+        echo "MODEL_VERSION=$MODEL_VERSION" >> $GITHUB_ENV
+        echo "Building Docker image with model version: $MODEL_VERSION"
+    
+    - name: Build Docker image
+      run: |
+        echo "Construyendo imagen Docker con el nuevo modelo..."
+        docker build -t fraud-detection:$MODEL_VERSION .
+        docker tag fraud-detection:$MODEL_VERSION fraud-detection:latest
+        
+        echo "Docker image built successfully:"
+        echo "- fraud-detection:$MODEL_VERSION"
+        echo "- fraud-detection:latest"
+    
+    - name: Save Docker image info
+      run: |
+        echo "## Nueva Imagen Docker Disponible" >> $GITHUB_STEP_SUMMARY
+        echo "| Información | Valor |" >> $GITHUB_STEP_SUMMARY
+        echo "|-------------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Imagen | fraud-detection:$MODEL_VERSION |" >> $GITHUB_STEP_SUMMARY
+        echo "| Tag Latest | fraud-detection:latest |" >> $GITHUB_STEP_SUMMARY
+        echo "| Comando Run | \`docker run -p 8000:8000 fraud-detection:latest\` |" >> $GITHUB_STEP_SUMMARY
+        
+        # Opcional: Guardar información para webhook o deployment
+        echo '{"image":"fraud-detection:'$MODEL_VERSION'","tag":"'$MODEL_VERSION'"}' > docker-image-info.json
+        
+    # Notificar al contenedor running para recargar el modelo
+    - name: Notify running containers to reload model
+      run: |
+        echo "Notificando a contenedores en ejecución para recargar modelo..."
+        
+        # Si hay un contenedor corriendo localmente, notificarle
+        if curl -f http://localhost:8000/health >/dev/null 2>&1; then
+          echo "Contenedor local detectado, solicitando recarga del modelo..."
+          curl -X POST http://localhost:8000/reload-model \
+            -H "Content-Type: application/json" || echo "No se pudo notificar al contenedor local"
+        fi
+        
+        # Opcional: Notificar a otros entornos (desarrollo, staging, etc.)
+        # Cambiar CONTAINER_ENDPOINTS según tus URLs de deployment
+        if [ -n "${{ vars.CONTAINER_ENDPOINTS }}" ]; then
+          echo "Notificando a contenedores remotos..."
+          IFS=',' read -ra ENDPOINTS <<< "${{ vars.CONTAINER_ENDPOINTS }}"
+          for endpoint in "${ENDPOINTS[@]}"; do
+            echo "Notificando a: $endpoint"
+            curl -X POST "$endpoint/reload-model" \
+              -H "Content-Type: application/json" \
+              --max-time 10 || echo "Error notificando a $endpoint"
+          done
+        fi
+        
+        echo "Notificaciones de recarga completadas"
+
   notify-results:
     name: Notify Results
     runs-on: ubuntu-latest
-    needs: [data-monitor, retrain-model]
+    needs: [data-monitor, retrain-model, build-docker-image]
     if: always()
     
     steps:
@@ -224,10 +293,14 @@ jobs:
         echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| Nuevas filas | ${{ needs.data-monitor.outputs.new_rows || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Necesita reentrenamiento | ${{ needs.data-monitor.outputs.needs_retrain || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Estado | ${{ needs.retrain-model.result || 'Saltado' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Estado Reentrenamiento | ${{ needs.retrain-model.result || 'Saltado' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Estado Docker Build | ${{ needs.build-docker-image.result || 'Saltado' }} |" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ needs.retrain-model.result }}" = "success" ]; then
           echo "Reentrenamiento completado exitosamente" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.build-docker-image.result }}" = "success" ]; then
+            echo "Nueva imagen Docker disponible para deployment" >> $GITHUB_STEP_SUMMARY
+          fi
         elif [ "${{ needs.data-monitor.outputs.needs_retrain }}" = "false" ]; then
           echo "No se necesitaba reentrenamiento" >> $GITHUB_STEP_SUMMARY
         else

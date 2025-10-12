@@ -1,0 +1,93 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Documentation
+*.md
+docs/
+README.md
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+*.ipynb
+notebooks/
+tests/
+.pytest_cache/
+test_*.py
+*_test.py
+
+# Data files not needed in container
+data/*.csv
+!data/fraud_data_processed.csv
+
+# Model backups
+models/backup_*
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+.tmp
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Docker
+docker-compose*.yml
+deploy.sh
+
+# Monitoring configs (not needed in production)
+monitoring/
+
+# Documentation
+DOCKER_README.md
+RENDER_DEPLOYMENT.md
+
+# Development files
+.vscode/
+.idea/
