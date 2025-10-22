@@ -103,7 +103,7 @@ POST /predict/batch
 
 ## Reentrenamiento Automático
 
-### Cómo funciona?
+### ¿Cómo funciona?
 
 1. **Trigger:** Se activa cuando modificas archivos en `data/`
 2. **Monitoreo:** Detecta si hay >100 filas nuevas (configurable)  
@@ -207,7 +207,7 @@ Cross-validation AUC: 0.9662 ± 0.0071
 False Positives: Minimizados para reducir fricción
 ```
 
-## 🔧 Configuración Avanzada
+## Configuración Avanzada
 
 ### **Variables de entorno:**
 ```bash
@@ -230,23 +230,6 @@ RETRAIN_CONFIG = {
     'run_tests': True          # Tests post-entrenamiento
 }
 ```
-
-## 🚀 Próximos pasos
-
-- [ ] **Docker Compose** para múltiples servicios
-- [ ] **Monitoring** con Prometheus/Grafana
-- [ ] **A/B Testing** entre versiones de modelo
-- [ ] **Feature Store** para gestión de características
-- [ ] **Explicabilidad** con SHAP/LIME
-- [ ] **Drift Detection** para monitoreo continuo
-
-## 🤝 Contribución
-
-1. Fork el repo
-2. Crea tu branch (`git checkout -b feature/nueva-feature`)
-3. Commit tus cambios (`git commit -m 'Add: nueva feature'`) 
-4. Push al branch (`git push origin feature/nueva-feature`)
-5. Abre un Pull Request
 
 ## 📄 Licencia
 
