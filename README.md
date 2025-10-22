@@ -37,7 +37,7 @@ Proyecto MLOps completo para detección de fraude bancario implementando:
 ### 1. Instalación
 
 ```bash
-git clone <tu-repo>
+git clone https://github.com/danielhenc/fraud_detection_mlops.git
 cd fraud_detection_mlops
 pip install -r requirements.txt
 ```
@@ -231,16 +231,8 @@ RETRAIN_CONFIG = {
 }
 ```
 
-## 📄 Licencia
+## Licencia
 
 MIT License - ver archivo `LICENSE` para detalles.
 
 ---
-
-## 📞 Contacto y Soporte
-
-- **Documentación:** Ver `TEST_RESULTS.md` para detalles técnicos
-- **Issues:** Usa GitHub Issues para reportar bugs
-- **MLOps Best Practices:** Este proyecto sigue patrones estándar de la industria
-
-**🎯 ¡Proyecto listo para producción con CI/CD automático!**
